@@ -593,13 +593,11 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                   shopMoney { amount currencyCode }
                 }
                 refunds(first: 50) {
-                  nodes {
-                    id
-                    createdAt
-                    processedAt
-                    totalRefundedSet {
-                      shopMoney { amount currencyCode }
-                    }
+                  id
+                  createdAt
+                  processedAt
+                  totalRefundedSet {
+                    shopMoney { amount currencyCode }
                   }
                 }
               }
@@ -625,7 +623,7 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 currency = total_price_set.get("currencyCode") or current_total_set.get("currencyCode") or "USD"
 
                 refunds = []
-                refund_nodes = ((node.get("refunds") or {}).get("nodes")) or []
+                refund_nodes = node.get("refunds") or []
                 for refund in refund_nodes:
                     refund_money = ((refund.get("totalRefundedSet") or {}).get("shopMoney") or {})
                     refunds.append(
