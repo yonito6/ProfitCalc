@@ -81,19 +81,11 @@ st.markdown(
         margin-bottom: 0.2rem;
     }
 
-    .panel {
-        background: linear-gradient(180deg, rgba(19,23,32,0.96) 0%, rgba(14,18,25,0.96) 100%);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 18px;
-        padding: 14px 16px;
-        box-shadow: 0 12px 34px rgba(0,0,0,0.20);
-    }
-
     .panel-tight {
         background: linear-gradient(180deg, rgba(19,23,32,0.96) 0%, rgba(14,18,25,0.96) 100%);
         border: 1px solid rgba(255,255,255,0.08);
         border-radius: 16px;
-        padding: 12px 14px;
+        padding: 11px 12px;
         box-shadow: 0 10px 28px rgba(0,0,0,0.16);
     }
 
@@ -108,8 +100,8 @@ st.markdown(
 
     .mini-label {
         color: #8893a3;
-        font-size: 0.79rem;
-        margin-bottom: 0.28rem;
+        font-size: 0.75rem;
+        margin-bottom: 0.22rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
         font-weight: 700;
@@ -117,16 +109,16 @@ st.markdown(
 
     .range-big {
         color: #edf2f8;
-        font-size: 1.02rem;
+        font-size: 0.98rem;
         font-weight: 700;
-        line-height: 1.15;
-        margin-bottom: 0.22rem;
+        line-height: 1.12;
+        margin-bottom: 0.18rem;
     }
 
     .range-sub {
         color: #8d97a5;
-        font-size: 0.82rem;
-        line-height: 1.25;
+        font-size: 0.78rem;
+        line-height: 1.2;
     }
 
     .top-grid-gap {
@@ -180,10 +172,6 @@ st.markdown(
         line-height: 1.2;
     }
 
-    .metric-row {
-        margin-top: 0.2rem;
-    }
-
     .metric-row-spacer {
         margin-top: 0.95rem;
     }
@@ -191,15 +179,17 @@ st.markdown(
     .sync-chip {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 4px;
         background: rgba(255,255,255,0.04);
         border: 1px solid rgba(255,255,255,0.08);
         border-radius: 999px;
-        padding: 6px 10px;
+        padding: 4px 8px;
         color: #c8d0dc;
-        font-size: 0.8rem;
-        margin-right: 8px;
-        margin-bottom: 6px;
+        font-size: 0.72rem;
+        margin-right: 5px;
+        margin-bottom: 5px;
+        line-height: 1.1;
+        white-space: nowrap;
     }
 
     .compact-note {
@@ -235,20 +225,12 @@ st.markdown(
         gap: 0.9rem !important;
     }
 
-    /* Dataframes */
     div[data-testid="stDataFrame"] {
         border-radius: 16px;
         overflow: hidden;
         border: 1px solid rgba(255,255,255,0.08);
     }
 
-    /* Chart wrapper spacing */
-    .chart-wrap {
-        margin-top: 0.15rem;
-        margin-bottom: 0.25rem;
-    }
-
-    /* Mobile */
     @media (max-width: 768px) {
         .block-container {
             padding-top: 0.35rem;
@@ -267,9 +249,8 @@ st.markdown(
             margin-top: 0.2rem;
         }
 
-        .panel,
         .panel-tight {
-            padding: 12px 12px;
+            padding: 11px 11px;
             border-radius: 16px;
         }
 
@@ -299,6 +280,11 @@ st.markdown(
         .metric-row-spacer {
             margin-top: 0.75rem;
         }
+
+        .sync-chip {
+            font-size: 0.68rem;
+            padding: 4px 7px;
+        }
     }
     </style>
     """,
@@ -323,6 +309,12 @@ def metric_card(label: str, value: str, sub: str = "", theme: str = ""):
 # -------------------------
 # Database
 # -------------------------
+def add_column_if_missing(conn: sqlite3.Connection, table_name: str, column_name: str, column_def: str) -> None:
+    existing_cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+    if column_name not in existing_cols:
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}")
+
+
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -384,6 +376,13 @@ def get_conn() -> sqlite3.Connection:
         )
     """)
 
+    # Backfill new columns safely
+    add_column_if_missing(conn, "shopify_orders", "original_total_price", "REAL")
+    add_column_if_missing(conn, "shopify_orders", "current_total_price", "REAL")
+    add_column_if_missing(conn, "shopify_orders", "total_refunded", "REAL")
+    add_column_if_missing(conn, "shopify_orders", "cancelled_at", "TEXT")
+    add_column_if_missing(conn, "shopify_orders", "refunds_json", "TEXT")
+
     conn.execute("CREATE INDEX IF NOT EXISTS idx_shopify_order_name ON shopify_orders(order_name)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_shopify_created_at ON shopify_orders(created_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cj_order_number ON cj_order_costs(order_number)")
@@ -431,6 +430,10 @@ def parse_iso_dt(s: Optional[str]) -> Optional[datetime]:
         return dt.to_pydatetime()
     except Exception:
         return None
+
+
+def to_store_date_str(dt_series: pd.Series) -> pd.Series:
+    return pd.to_datetime(dt_series, utc=True, errors="coerce").dt.tz_convert(STORE_TIMEZONE).dt.strftime("%Y-%m-%d")
 
 
 def upsert_sync_state(source: str, status: str, message: str = "") -> None:
@@ -562,11 +565,26 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 name
                 createdAt
                 processedAt
+                cancelledAt
                 test
                 displayFinancialStatus
                 paymentGatewayNames
+                totalPriceSet {
+                  shopMoney { amount currencyCode }
+                }
                 currentTotalPriceSet {
                   shopMoney { amount currencyCode }
+                }
+                totalRefundedSet {
+                  shopMoney { amount currencyCode }
+                }
+                refunds(first: 50) {
+                  id
+                  createdAt
+                  processedAt
+                  totalRefundedSet {
+                    shopMoney { amount currencyCode }
+                  }
                 }
               }
             }
@@ -581,23 +599,50 @@ def sync_shopify_orders(days_back: int = 60) -> int:
             for edge in orders:
                 node = edge["node"]
 
-                revenue = safe_float(((node.get("currentTotalPriceSet") or {}).get("shopMoney") or {}).get("amount"))
-                currency = (((node.get("currentTotalPriceSet") or {}).get("shopMoney") or {}).get("currencyCode")) or "USD"
+                total_price_set = (node.get("totalPriceSet") or {}).get("shopMoney") or {}
+                current_total_set = (node.get("currentTotalPriceSet") or {}).get("shopMoney") or {}
+                total_refunded_set = (node.get("totalRefundedSet") or {}).get("shopMoney") or {}
+
+                original_total_price = safe_float(total_price_set.get("amount"))
+                current_total_price = safe_float(current_total_set.get("amount"))
+                total_refunded = safe_float(total_refunded_set.get("amount"))
+                currency = total_price_set.get("currencyCode") or current_total_set.get("currencyCode") or "USD"
+
+                refunds = []
+                for refund in node.get("refunds") or []:
+                    refund_money = ((refund.get("totalRefundedSet") or {}).get("shopMoney") or {})
+                    refunds.append(
+                        {
+                            "id": refund.get("id"),
+                            "createdAt": refund.get("createdAt"),
+                            "processedAt": refund.get("processedAt"),
+                            "amount": safe_float(refund_money.get("amount")),
+                            "currencyCode": refund_money.get("currencyCode") or currency,
+                        }
+                    )
 
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO shopify_orders
-                    (order_id, order_name, created_at, revenue, currency, financial_status, line_items_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (
+                        order_id, order_name, created_at, revenue, currency, financial_status, line_items_json,
+                        original_total_price, current_total_price, total_refunded, cancelled_at, refunds_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         node["id"],
                         node["name"],
                         node["createdAt"],
-                        revenue,
+                        original_total_price,
                         currency,
                         node.get("displayFinancialStatus"),
                         "[]",
+                        original_total_price,
+                        current_total_price,
+                        total_refunded,
+                        node.get("cancelledAt"),
+                        json.dumps(refunds),
                     ),
                 )
 
@@ -1172,6 +1217,92 @@ def dedupe_cj_for_merge(cj: pd.DataFrame) -> pd.DataFrame:
     return cj
 
 
+def build_refund_rows(orders_df: pd.DataFrame) -> pd.DataFrame:
+    refund_rows = []
+
+    for _, row in orders_df.iterrows():
+        if safe_float(row.get("is_cancelled_int")) == 1:
+            continue
+
+        refunds_raw = row.get("refunds_json")
+        if not refunds_raw:
+            continue
+
+        try:
+            refunds = json.loads(refunds_raw)
+        except Exception:
+            refunds = []
+
+        if not isinstance(refunds, list):
+            continue
+
+        for idx, refund in enumerate(refunds):
+            refund_amount = safe_float(refund.get("amount"))
+            refund_ts = refund.get("processedAt") or refund.get("createdAt")
+            if refund_amount <= 0 or not refund_ts:
+                continue
+
+            refund_dt = pd.to_datetime(refund_ts, utc=True, errors="coerce")
+            if pd.isna(refund_dt):
+                continue
+
+            refund_rows.append(
+                {
+                    "event_id": f"{row['order_id']}__refund__{idx}",
+                    "order_id": row["order_id"],
+                    "order_name": row["order_name"],
+                    "event_type": "refund",
+                    "event_dt": refund_dt,
+                    "event_date": refund_dt.tz_convert(STORE_TIMEZONE).strftime("%Y-%m-%d"),
+                    "revenue": -refund_amount,
+                    "cogs": 0.0,
+                    "gateway_key": row["gateway_key"],
+                    "payment_fee": 0.0,
+                    "cost_source": "refund_adjustment",
+                    "financial_status": row["financial_status"],
+                    "allocated_ad_spend": 0.0,
+                }
+            )
+
+    return pd.DataFrame(refund_rows)
+
+
+def build_cancel_rows(orders_df: pd.DataFrame) -> pd.DataFrame:
+    cancel_rows = []
+
+    for _, row in orders_df.iterrows():
+        cancelled_at = row.get("cancelled_at")
+        if not cancelled_at:
+            continue
+
+        cancel_dt = pd.to_datetime(cancelled_at, utc=True, errors="coerce")
+        if pd.isna(cancel_dt):
+            continue
+
+        original_revenue = safe_float(row.get("original_total_price"))
+        cogs = safe_float(row.get("cogs_base"))
+
+        cancel_rows.append(
+            {
+                "event_id": f"{row['order_id']}__cancel",
+                "order_id": row["order_id"],
+                "order_name": row["order_name"],
+                "event_type": "cancel",
+                "event_dt": cancel_dt,
+                "event_date": cancel_dt.tz_convert(STORE_TIMEZONE).strftime("%Y-%m-%d"),
+                "revenue": -original_revenue,
+                "cogs": -cogs,
+                "gateway_key": row["gateway_key"],
+                "payment_fee": 0.0,
+                "cost_source": "cancel_adjustment",
+                "financial_status": row["financial_status"],
+                "allocated_ad_spend": 0.0,
+            }
+        )
+
+    return pd.DataFrame(cancel_rows)
+
+
 def load_profit_df() -> pd.DataFrame:
     conn = get_conn()
     try:
@@ -1193,10 +1324,12 @@ def load_profit_df() -> pd.DataFrame:
 
     orders["created_at"] = pd.to_datetime(orders["created_at"], utc=True, errors="coerce")
     orders["processed_at"] = pd.to_datetime(orders["processed_at"], utc=True, errors="coerce")
-    orders["report_dt"] = orders["processed_at"].combine_first(orders["created_at"])
-    orders = orders.dropna(subset=["report_dt"])
+    orders["cancelled_at"] = pd.to_datetime(orders.get("cancelled_at"), utc=True, errors="coerce")
 
-    orders["order_date"] = orders["report_dt"].dt.tz_convert(STORE_TIMEZONE).dt.strftime("%Y-%m-%d")
+    orders["report_dt"] = orders["processed_at"].combine_first(orders["created_at"])
+    orders = orders.dropna(subset=["report_dt"]).copy()
+
+    orders["sale_date"] = orders["report_dt"].dt.tz_convert(STORE_TIMEZONE).dt.strftime("%Y-%m-%d")
     orders["order_name_normalized"] = orders["order_name"].apply(normalize_order_name)
 
     if "is_test" in orders.columns:
@@ -1209,7 +1342,7 @@ def load_profit_df() -> pd.DataFrame:
 
     cj = dedupe_cj_for_merge(cj)
 
-    df = orders.merge(
+    orders = orders.merge(
         manual,
         how="left",
         left_on="order_name_normalized",
@@ -1218,7 +1351,7 @@ def load_profit_df() -> pd.DataFrame:
     )
 
     if not cj.empty:
-        df = df.merge(
+        orders = orders.merge(
             cj[["order_number", "total_cost"]],
             how="left",
             left_on="order_name_normalized",
@@ -1226,45 +1359,118 @@ def load_profit_df() -> pd.DataFrame:
             suffixes=("", "_cj"),
         )
     else:
-        df["total_cost_cj"] = math.nan
+        orders["total_cost_cj"] = math.nan
 
-    df["cogs"] = df["total_cost"].combine_first(df["total_cost_cj"]).fillna(0.0)
-
-    df = df.merge(meta, how="left", left_on="order_date", right_on="spend_date")
-    df["spend"] = df["spend"].fillna(0.0)
-
-    daily_revenue = df.groupby("order_date")["revenue"].transform("sum")
-    df["allocated_ad_spend"] = df.apply(
-        lambda r: 0.0 if safe_float(daily_revenue.loc[r.name]) == 0
-        else (safe_float(r["revenue"]) / safe_float(daily_revenue.loc[r.name])) * safe_float(r["spend"]),
-        axis=1,
+    orders["original_total_price"] = pd.to_numeric(orders.get("original_total_price"), errors="coerce").fillna(
+        pd.to_numeric(orders.get("revenue"), errors="coerce").fillna(0.0)
     )
+    orders["current_total_price"] = pd.to_numeric(orders.get("current_total_price"), errors="coerce").fillna(0.0)
+    orders["total_refunded"] = pd.to_numeric(orders.get("total_refunded"), errors="coerce").fillna(0.0)
 
-    df["payment_gateways_json"] = df["payment_gateways_json"].fillna("[]")
-    df["gateway_key"] = df["payment_gateways_json"].apply(detect_gateway_name)
+    orders["cogs_base"] = orders["total_cost"].combine_first(orders["total_cost_cj"]).fillna(0.0)
 
-    fee_parts = df["gateway_key"].apply(fee_rule_for_gateway)
-    df["fee_pct"] = fee_parts.apply(lambda x: x[0])
-    df["fee_fixed"] = fee_parts.apply(lambda x: x[1])
+    orders["payment_gateways_json"] = orders["payment_gateways_json"].fillna("[]")
+    orders["gateway_key"] = orders["payment_gateways_json"].apply(detect_gateway_name)
 
-    df["payment_fee"] = (df["revenue"] * df["fee_pct"]) + df["fee_fixed"]
+    fee_parts = orders["gateway_key"].apply(fee_rule_for_gateway)
+    orders["fee_pct"] = fee_parts.apply(lambda x: x[0])
+    orders["fee_fixed"] = fee_parts.apply(lambda x: x[1])
 
-    df["profit"] = df["revenue"] - df["cogs"] - df["allocated_ad_spend"] - df["payment_fee"]
-    df["margin_pct"] = df["profit"] / df["revenue"].replace(0, math.nan) * 100
+    orders["is_cancelled_int"] = orders["cancelled_at"].notna().astype(int)
 
-    def cost_source(row) -> str:
+    # Sale rows: always keep original sale on original order day
+    sale_rows = orders[
+        [
+            "order_id",
+            "order_name",
+            "report_dt",
+            "sale_date",
+            "original_total_price",
+            "cogs_base",
+            "gateway_key",
+            "financial_status",
+            "fee_pct",
+            "fee_fixed",
+            "total_cost",
+            "total_cost_cj",
+        ]
+    ].copy()
+
+    sale_rows["event_id"] = sale_rows["order_id"].astype(str) + "__sale"
+    sale_rows["event_type"] = "sale"
+    sale_rows["event_dt"] = sale_rows["report_dt"]
+    sale_rows["event_date"] = sale_rows["sale_date"]
+    sale_rows["revenue"] = sale_rows["original_total_price"].fillna(0.0)
+    sale_rows["cogs"] = sale_rows["cogs_base"].fillna(0.0)
+    sale_rows["payment_fee"] = (sale_rows["revenue"] * sale_rows["fee_pct"]) + sale_rows["fee_fixed"]
+    sale_rows["allocated_ad_spend"] = 0.0
+
+    def cost_source_from_row(row) -> str:
         if pd.notna(row.get("total_cost")):
             return "manual"
         if pd.notna(row.get("total_cost_cj")) and safe_float(row.get("total_cost_cj")) > 0:
             return "cj"
         return "missing"
 
-    df["cost_source"] = df.apply(cost_source, axis=1)
+    sale_rows["cost_source"] = sale_rows.apply(cost_source_from_row, axis=1)
 
-    df = df.drop_duplicates(subset=["order_name", "order_date", "revenue", "financial_status"], keep="first")
+    sale_rows = sale_rows[
+        [
+            "event_id",
+            "order_id",
+            "order_name",
+            "event_type",
+            "event_dt",
+            "event_date",
+            "revenue",
+            "cogs",
+            "payment_fee",
+            "allocated_ad_spend",
+            "cost_source",
+            "gateway_key",
+            "financial_status",
+        ]
+    ]
+
+    refund_rows = build_refund_rows(orders)
+    cancel_rows = build_cancel_rows(orders)
+
+    all_rows = [sale_rows]
+    if not refund_rows.empty:
+        all_rows.append(refund_rows)
+    if not cancel_rows.empty:
+        all_rows.append(cancel_rows)
+
+    df = pd.concat(all_rows, ignore_index=True)
+
+    # Meta spend should only be allocated across actual sale rows on sale day
+    df = df.merge(meta, how="left", left_on="event_date", right_on="spend_date")
+    df["spend"] = df["spend"].fillna(0.0)
+
+    sale_mask = df["event_type"] == "sale"
+    daily_sale_revenue = df[sale_mask].groupby("event_date")["revenue"].sum().to_dict()
+
+    def alloc_ad_spend(row):
+        if row["event_type"] != "sale":
+            return 0.0
+        day_total = safe_float(daily_sale_revenue.get(row["event_date"], 0.0))
+        if day_total <= 0:
+            return 0.0
+        return (safe_float(row["revenue"]) / day_total) * safe_float(row["spend"])
+
+    df["allocated_ad_spend"] = df.apply(alloc_ad_spend, axis=1)
+
+    df["profit"] = df["revenue"] - df["cogs"] - df["allocated_ad_spend"] - df["payment_fee"]
+    df["margin_pct"] = df["profit"] / df["revenue"].replace(0, math.nan) * 100
+
+    df["order_date"] = df["event_date"]
+
+    df = df.drop_duplicates(subset=["event_id"], keep="first")
 
     return df[
         [
+            "event_id",
+            "event_type",
             "order_name",
             "order_date",
             "revenue",
@@ -1277,7 +1483,7 @@ def load_profit_df() -> pd.DataFrame:
             "gateway_key",
             "financial_status",
         ]
-    ].sort_values(["order_date", "order_name"], ascending=[False, False])
+    ].sort_values(["order_date", "order_name", "event_type"], ascending=[False, False, True])
 
 
 # -------------------------
@@ -1371,15 +1577,18 @@ def maybe_autoload_missing_cogs_for_visible_range(start_date: date, end_date: da
 # Chart
 # -------------------------
 def render_revenue_profit_chart(graph_df: pd.DataFrame, start_date: date, end_date: date):
-    if graph_df.empty:
-        st.info("No chart data for the selected range.")
-        return
+    full_dates = pd.date_range(start=pd.Timestamp(start_date), end=pd.Timestamp(end_date), freq="D")
 
-    graph_df = graph_df.copy()
-    graph_df["order_date"] = pd.to_datetime(graph_df["order_date"])
+    if graph_df.empty:
+        graph_df = pd.DataFrame({"order_date": full_dates, "revenue": 0.0, "profit": 0.0})
+    else:
+        graph_df = graph_df.copy()
+        graph_df["order_date"] = pd.to_datetime(graph_df["order_date"]).dt.normalize()
+        graph_df = pd.DataFrame({"order_date": full_dates}).merge(graph_df, on="order_date", how="left").fillna(0.0)
 
     start_ts = pd.Timestamp(start_date)
     end_ts = pd.Timestamp(end_date) + pd.Timedelta(hours=23, minutes=59, seconds=59)
+    span_days = max((end_date - start_date).days + 1, 1)
 
     fig = go.Figure()
 
@@ -1407,6 +1616,21 @@ def render_revenue_profit_chart(graph_df: pd.DataFrame, start_date: date, end_da
         )
     )
 
+    xaxis_cfg = dict(
+        title=None,
+        range=[start_ts, end_ts],
+        fixedrange=False,
+        showgrid=False,
+        zeroline=False,
+        rangeslider=dict(visible=False),
+        tickformat="%b %d",
+    )
+
+    if span_days <= 14:
+        xaxis_cfg["tickmode"] = "array"
+        xaxis_cfg["tickvals"] = list(full_dates)
+        xaxis_cfg["ticktext"] = [d.strftime("%b %d") for d in full_dates]
+
     fig.update_layout(
         height=335,
         margin=dict(l=12, r=12, t=8, b=8),
@@ -1421,17 +1645,7 @@ def render_revenue_profit_chart(graph_df: pd.DataFrame, start_date: date, end_da
             x=1,
             bgcolor="rgba(0,0,0,0)",
         ),
-        xaxis=dict(
-            title=None,
-            range=[start_ts, end_ts],
-            fixedrange=False,
-            showgrid=False,
-            zeroline=False,
-            rangeslider=dict(visible=False),
-            tickformat="%b %d",
-            minallowed=start_ts,
-            maxallowed=end_ts,
-        ),
+        xaxis=xaxis_cfg,
         yaxis=dict(
             title=None,
             showgrid=True,
@@ -1474,7 +1688,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-top_a, top_b = st.columns([1.45, 1], vertical_alignment="center")
+top_a, top_b = st.columns([1.55, 0.95], vertical_alignment="center")
 
 with top_a:
     st.markdown("<div class='section-title'>Date Range</div>", unsafe_allow_html=True)
@@ -1527,7 +1741,7 @@ with top_b:
             except Exception as e:
                 st.error(f"Refresh failed: {e}")
 
-status_left, status_right = st.columns([1.1, 1], vertical_alignment="center")
+status_left, status_right = st.columns([1.3, 0.8], vertical_alignment="center")
 
 with status_left:
     st.markdown(
@@ -1535,7 +1749,7 @@ with status_left:
         <div class="panel-tight">
             <div class="mini-label">Selected Window</div>
             <div class="range-big">{start_date} → {end_date}</div>
-            <div class="range-sub">All metrics, tables, and chart reflect only this selected range.</div>
+            <div class="range-sub">All metrics, tables, chart, refunds, and cancellations reflect only this selected range.</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1578,7 +1792,6 @@ with st.expander("Manual COGS override CSV / XLSX", expanded=False):
         except Exception as e:
             st.error(f"CSV import failed: {e}")
 
-# Auto-load all data immediately
 if st.session_state.auto_sync_enabled:
     try:
         with st.spinner("Loading latest Shopify, Meta, and CJ data..."):
@@ -1602,12 +1815,19 @@ else:
     df["order_date_dt"] = pd.to_datetime(df["order_date"]).dt.date
     filtered_df = df[(df["order_date_dt"] >= start_date) & (df["order_date_dt"] <= end_date)].copy()
 
+    sale_df = filtered_df[filtered_df["event_type"] == "sale"].copy()
+    refund_df = filtered_df[filtered_df["event_type"] == "refund"].copy()
+    cancel_df = filtered_df[filtered_df["event_type"] == "cancel"].copy()
+
     revenue_sum = filtered_df["revenue"].sum()
     cogs_sum = filtered_df["cogs"].sum()
     ad_spend_sum = filtered_df["allocated_ad_spend"].sum()
     fee_sum = filtered_df["payment_fee"].sum()
     profit_sum = filtered_df["profit"].sum()
-    orders_count = len(filtered_df)
+    orders_count = len(sale_df)
+
+    refunds_sum = -refund_df["revenue"].sum()
+    canceled_sum = -cancel_df["revenue"].sum()
 
     margin = (profit_sum / revenue_sum * 100) if revenue_sum > 0 else 0.0
     roas = (revenue_sum / ad_spend_sum) if ad_spend_sum > 0 else 0.0
@@ -1620,19 +1840,23 @@ else:
     with m2:
         metric_card("Profit", f"${profit_sum:,.2f}", f"Margin: {margin:.2f}%", theme="profit")
     with m3:
-        metric_card("Orders", f"{orders_count:,}", "Visible orders in selected range", theme="soft")
+        metric_card("Orders", f"{orders_count:,}", "Original sale orders in range", theme="soft")
     with m4:
         metric_card("ROAS", f"{roas:.2f}x", "Revenue / ad spend", theme="soft")
 
     st.markdown("<div class='metric-row-spacer'></div>", unsafe_allow_html=True)
 
-    m5, m6, m7 = st.columns(3)
+    m5, m6, m7, m8, m9 = st.columns(5)
     with m5:
-        metric_card("COGS", f"${cogs_sum:,.2f}", "Manual CSV overrides CJ", theme="soft")
+        metric_card("COGS", f"${cogs_sum:,.2f}", "Includes cancel reversals", theme="soft")
     with m6:
         metric_card("Ad Spend", f"${ad_spend_sum:,.2f}", "Allocated from Meta daily spend", theme="soft")
     with m7:
-        metric_card("Transaction Fees", f"${fee_sum:,.2f}", "Gateway fee + 1% external gateway fee", theme="soft")
+        metric_card("Fees", f"${fee_sum:,.2f}", "Gateway fee + 1% external gateway fee", theme="soft")
+    with m8:
+        metric_card("Refunds", f"${refunds_sum:,.2f}", "Booked on refund date", theme="soft")
+    with m9:
+        metric_card("Canceled", f"${canceled_sum:,.2f}", "Revenue reversed on cancel date", theme="soft")
 
     st.markdown("<div class='section-title'>Revenue vs Profit</div>", unsafe_allow_html=True)
 
@@ -1651,13 +1875,14 @@ else:
 
     render_revenue_profit_chart(graph_df, start_date, end_date)
 
-    left, right = st.columns([1.5, 1], vertical_alignment="top")
+    left, right = st.columns([1.55, 1], vertical_alignment="top")
 
     with left:
-        st.markdown("<div class='section-title'>Orders</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Orders & Adjustments</div>", unsafe_allow_html=True)
 
         display_df = filtered_df[
             [
+                "event_type",
                 "order_name",
                 "order_date",
                 "revenue",
@@ -1674,6 +1899,7 @@ else:
 
         display_df = display_df.rename(
             columns={
+                "event_type": "Type",
                 "order_name": "Order",
                 "order_date": "Date",
                 "revenue": "Revenue",
@@ -1688,13 +1914,19 @@ else:
             }
         )
 
+        display_df["Type"] = display_df["Type"].replace(
+            {"sale": "Sale", "refund": "Refund", "cancel": "Cancel"}
+        )
+
         st.dataframe(display_with_1_index(display_df), use_container_width=True, height=510)
 
     with right:
         st.markdown("<div class='section-title'>Daily Summary</div>", unsafe_allow_html=True)
 
         summary_df = filtered_df.groupby("order_date", as_index=False).agg(
-            orders=("order_name", "count"),
+            sales=("event_type", lambda s: int((s == "sale").sum())),
+            refunds=("event_type", lambda s: int((s == "refund").sum())),
+            cancels=("event_type", lambda s: int((s == "cancel").sum())),
             revenue=("revenue", "sum"),
             cogs=("cogs", "sum"),
             fees=("payment_fee", "sum"),
@@ -1705,7 +1937,9 @@ else:
         summary_df = summary_df.rename(
             columns={
                 "order_date": "Date",
-                "orders": "Orders",
+                "sales": "Sales",
+                "refunds": "Refunds",
+                "cancels": "Cancels",
                 "revenue": "Revenue",
                 "cogs": "COGS",
                 "fees": "Fees",
@@ -1716,9 +1950,9 @@ else:
 
         st.dataframe(display_with_1_index(summary_df), use_container_width=True, height=300)
 
-        missing_count = int((filtered_df["cost_source"] == "missing").sum())
-        cj_count = int((filtered_df["cost_source"] == "cj").sum())
-        manual_count = int((filtered_df["cost_source"] == "manual").sum())
+        missing_count = int((sale_df["cost_source"] == "missing").sum())
+        cj_count = int((sale_df["cost_source"] == "cj").sum())
+        manual_count = int((sale_df["cost_source"] == "manual").sum())
 
         st.markdown("<div class='section-title'>Cost Source Mix</div>", unsafe_allow_html=True)
         mix1, mix2, mix3 = st.columns(3)
@@ -1732,9 +1966,13 @@ else:
         with st.expander("Selected range details"):
             st.write(f"Start date: **{start_date}**")
             st.write(f"End date: **{end_date}**")
-            st.write(f"Orders in range: **{len(filtered_df)}**")
+            st.write(f"Sale orders in range: **{len(sale_df)}**")
+            st.write(f"Refund events in range: **{len(refund_df)}**")
+            st.write(f"Cancel events in range: **{len(cancel_df)}**")
             st.write(f"Revenue sum: **${revenue_sum:,.2f}**")
             st.write(f"COGS sum: **${cogs_sum:,.2f}**")
+            st.write(f"Refunded amount: **${refunds_sum:,.2f}**")
+            st.write(f"Canceled amount: **${canceled_sum:,.2f}**")
             st.write(f"Profit sum: **${profit_sum:,.2f}**")
 
     with st.expander("Advanced tools"):
