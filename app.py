@@ -39,6 +39,11 @@ OTHER_GATEWAY_FEE_FIXED = float(st.secrets.get("OTHER_GATEWAY_FEE_FIXED", 0.30))
 
 SHOPIFY_THIRD_PARTY_FEE_PERCENT = 0.01
 
+CJ_PAGE_SIZE = 50
+CJ_PAGE_FETCH_WORKERS = 4
+CJ_DETAIL_FETCH_WORKERS = 10
+CJ_MAX_PAGES_HARD_LIMIT = 260
+
 
 # -------------------------
 # Styling
@@ -54,8 +59,8 @@ st.markdown(
     }
 
     .block-container {
-        padding-top: 0.55rem;
-        padding-bottom: 1.15rem;
+        padding-top: 0.42rem;
+        padding-bottom: 1rem;
         max-width: 1460px;
     }
 
@@ -64,9 +69,9 @@ st.markdown(
     }
 
     .dashboard-title {
-        font-size: 2.05rem;
+        font-size: 1.95rem;
         font-weight: 800;
-        line-height: 1.05;
+        line-height: 1.02;
         color: #f5f7fb;
         margin: 0;
         padding: 0;
@@ -75,63 +80,76 @@ st.markdown(
 
     .dashboard-subtitle {
         color: #9ba6b5;
-        font-size: 0.92rem;
-        line-height: 1.35;
-        margin-top: 0.25rem;
-        margin-bottom: 0.2rem;
-    }
-
-    .panel-tight {
-        background: linear-gradient(180deg, rgba(19,23,32,0.96) 0%, rgba(14,18,25,0.96) 100%);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 16px;
-        padding: 11px 12px;
-        box-shadow: 0 10px 28px rgba(0,0,0,0.16);
+        font-size: 0.9rem;
+        line-height: 1.28;
+        margin-top: 0.18rem;
+        margin-bottom: 0.08rem;
     }
 
     .section-title {
-        font-size: 1.02rem;
+        font-size: 1rem;
         font-weight: 700;
         color: #f5f7fb;
-        margin: 0.2rem 0 0.65rem 0;
+        margin: 0.12rem 0 0.5rem 0;
         line-height: 1.1;
         letter-spacing: -0.01em;
     }
 
-    .mini-label {
-        color: #8893a3;
-        font-size: 0.75rem;
-        margin-bottom: 0.22rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        font-weight: 700;
-    }
-
-    .range-big {
-        color: #edf2f8;
-        font-size: 0.98rem;
-        font-weight: 700;
-        line-height: 1.12;
-        margin-bottom: 0.18rem;
-    }
-
-    .range-sub {
-        color: #8d97a5;
-        font-size: 0.78rem;
-        line-height: 1.2;
-    }
-
     .top-grid-gap {
-        margin-bottom: 0.7rem;
+        margin-bottom: 0.45rem;
+    }
+
+    .status-bar {
+        background: linear-gradient(180deg, rgba(19,23,32,0.96) 0%, rgba(14,18,25,0.96) 100%);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 16px;
+        padding: 9px 11px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.16);
+        margin-bottom: 0.35rem;
+    }
+
+    .status-grid {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 10px;
+    }
+
+    .status-title {
+        color: #edf2f8;
+        font-size: 0.88rem;
+        font-weight: 700;
+        line-height: 1.1;
+    }
+
+    .status-sub {
+        color: #8d97a5;
+        font-size: 0.74rem;
+        line-height: 1.1;
+    }
+
+    .sync-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 999px;
+        padding: 4px 8px;
+        color: #c8d0dc;
+        font-size: 0.71rem;
+        line-height: 1.05;
+        white-space: nowrap;
     }
 
     .metric-card {
         background: linear-gradient(180deg, #171c26 0%, #121722 100%);
         border: 1px solid rgba(255,255,255,0.085);
         border-radius: 18px;
-        padding: 16px 16px 12px 16px;
+        padding: 15px 15px 12px 15px;
         box-shadow: 0 10px 28px rgba(0,0,0,0.18);
-        min-height: 108px;
+        min-height: 102px;
+        margin-bottom: 0.08rem;
     }
 
     .metric-card.profit {
@@ -151,78 +169,54 @@ st.markdown(
 
     .metric-label {
         color: #9aa4b2;
-        font-size: 0.86rem;
+        font-size: 0.84rem;
         margin-bottom: 6px;
         font-weight: 600;
     }
 
     .metric-value {
         color: #ffffff;
-        font-size: 1.74rem;
+        font-size: 1.68rem;
         font-weight: 800;
-        line-height: 1.05;
+        line-height: 1.02;
         margin-bottom: 3px;
         letter-spacing: -0.03em;
     }
 
     .metric-sub {
         color: #7f8896;
-        font-size: 0.80rem;
+        font-size: 0.78rem;
         margin-top: 2px;
-        line-height: 1.2;
+        line-height: 1.18;
     }
 
-    .metric-row-spacer {
+    .metric-row-gap {
         margin-top: 0.95rem;
-    }
-
-    .sync-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 999px;
-        padding: 4px 8px;
-        color: #c8d0dc;
-        font-size: 0.72rem;
-        margin-right: 5px;
-        margin-bottom: 5px;
-        line-height: 1.1;
-        white-space: nowrap;
     }
 
     .compact-note {
         color: #8d97a5;
-        font-size: 0.84rem;
-        line-height: 1.28;
-        margin-bottom: 0.2rem;
+        font-size: 0.82rem;
+        line-height: 1.22;
+        margin-bottom: 0.15rem;
     }
 
     .stRadio > div {
-        margin-top: -0.15rem;
-    }
-
-    .stDateInput {
         margin-top: -0.1rem;
     }
 
+    .stDateInput {
+        margin-top: -0.05rem;
+    }
+
     .stFileUploader {
-        margin-top: 0.15rem;
+        margin-top: 0.1rem;
     }
 
     .stAlert {
-        padding-top: 0.58rem !important;
-        padding-bottom: 0.58rem !important;
+        padding-top: 0.56rem !important;
+        padding-bottom: 0.56rem !important;
         border-radius: 14px !important;
-    }
-
-    div[data-testid="stVerticalBlock"] > div:has(> div > div > .metric-card) {
-        gap: 0.7rem !important;
-    }
-
-    div[data-testid="stHorizontalBlock"] {
-        gap: 0.9rem !important;
     }
 
     div[data-testid="stDataFrame"] {
@@ -231,59 +225,84 @@ st.markdown(
         border: 1px solid rgba(255,255,255,0.08);
     }
 
+    div[data-testid="stHorizontalBlock"] {
+        gap: 0.95rem !important;
+    }
+
+    .chart-wrap {
+        margin-top: 0.05rem;
+        margin-bottom: 0.15rem;
+    }
+
     @media (max-width: 768px) {
         .block-container {
-            padding-top: 0.35rem;
-            padding-left: 0.68rem;
-            padding-right: 0.68rem;
-            padding-bottom: 0.9rem;
+            padding-top: 0.26rem;
+            padding-left: 0.62rem;
+            padding-right: 0.62rem;
+            padding-bottom: 0.75rem;
         }
 
         .dashboard-title {
-            font-size: 1.52rem;
-            line-height: 1.08;
+            font-size: 1.42rem;
+            line-height: 1.06;
         }
 
         .dashboard-subtitle {
-            font-size: 0.86rem;
-            margin-top: 0.2rem;
-        }
-
-        .panel-tight {
-            padding: 11px 11px;
-            border-radius: 16px;
-        }
-
-        .metric-card {
-            min-height: 96px;
-            padding: 14px 14px 11px 14px;
-            border-radius: 16px;
-        }
-
-        .metric-value {
-            font-size: 1.42rem;
-        }
-
-        .metric-label {
             font-size: 0.82rem;
-        }
-
-        .metric-sub {
-            font-size: 0.76rem;
+            line-height: 1.18;
+            margin-top: 0.16rem;
+            margin-bottom: 0.04rem;
         }
 
         .section-title {
-            font-size: 0.96rem;
-            margin-bottom: 0.45rem;
+            font-size: 0.93rem;
+            margin: 0.08rem 0 0.35rem 0;
         }
 
-        .metric-row-spacer {
-            margin-top: 0.75rem;
+        .status-bar {
+            padding: 8px 9px;
+            border-radius: 14px;
+            margin-bottom: 0.28rem;
+        }
+
+        .status-title {
+            font-size: 0.8rem;
+        }
+
+        .status-sub {
+            font-size: 0.69rem;
         }
 
         .sync-chip {
-            font-size: 0.68rem;
+            font-size: 0.66rem;
             padding: 4px 7px;
+        }
+
+        .metric-card {
+            min-height: 90px;
+            padding: 13px 13px 10px 13px;
+            border-radius: 16px;
+            margin-bottom: 0.16rem;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+        }
+
+        .metric-value {
+            font-size: 1.34rem;
+        }
+
+        .metric-sub {
+            font-size: 0.72rem;
+        }
+
+        .metric-row-gap {
+            margin-top: 0.62rem;
+        }
+
+        div[data-testid="stHorizontalBlock"] {
+            gap: 0.55rem !important;
         }
     }
     </style>
@@ -376,7 +395,6 @@ def get_conn() -> sqlite3.Connection:
         )
     """)
 
-    # Backfill new columns safely
     add_column_if_missing(conn, "shopify_orders", "original_total_price", "REAL")
     add_column_if_missing(conn, "shopify_orders", "current_total_price", "REAL")
     add_column_if_missing(conn, "shopify_orders", "total_refunded", "REAL")
@@ -430,10 +448,6 @@ def parse_iso_dt(s: Optional[str]) -> Optional[datetime]:
         return dt.to_pydatetime()
     except Exception:
         return None
-
-
-def to_store_date_str(dt_series: pd.Series) -> pd.Series:
-    return pd.to_datetime(dt_series, utc=True, errors="coerce").dt.tz_convert(STORE_TIMEZONE).dt.strftime("%Y-%m-%d")
 
 
 def upsert_sync_state(source: str, status: str, message: str = "") -> None:
@@ -579,11 +593,13 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                   shopMoney { amount currencyCode }
                 }
                 refunds(first: 50) {
-                  id
-                  createdAt
-                  processedAt
-                  totalRefundedSet {
-                    shopMoney { amount currencyCode }
+                  nodes {
+                    id
+                    createdAt
+                    processedAt
+                    totalRefundedSet {
+                      shopMoney { amount currencyCode }
+                    }
                   }
                 }
               }
@@ -609,7 +625,8 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 currency = total_price_set.get("currencyCode") or current_total_set.get("currencyCode") or "USD"
 
                 refunds = []
-                for refund in node.get("refunds") or []:
+                refund_nodes = ((node.get("refunds") or {}).get("nodes")) or []
+                for refund in refund_nodes:
                     refund_money = ((refund.get("totalRefundedSet") or {}).get("shopMoney") or {})
                     refunds.append(
                         {
@@ -871,29 +888,34 @@ def cj_extract_order_number(order_row: dict) -> str:
     return ""
 
 
+@st.cache_data(ttl=60 * 10, show_spinner=False)
 def get_cj_orders_page(token: str, page_num: int, page_size: int = 50) -> List[dict]:
     url = "https://developers.cjdropshipping.com/api2.0/v1/shopping/order/list"
     headers = {"CJ-Access-Token": token}
     params = {"pageNum": page_num, "pageSize": page_size}
 
-    resp = requests.get(url, headers=headers, params=params, timeout=60)
-
-    if resp.status_code == 429:
-        time.sleep(1.0)
+    for attempt in range(3):
         resp = requests.get(url, headers=headers, params=params, timeout=60)
 
-    if resp.status_code != 200:
-        raise RuntimeError(f"CJ order list HTTP error {resp.status_code}: {resp.text}")
+        if resp.status_code == 429:
+            time.sleep(1.2 * (attempt + 1))
+            continue
 
-    data = resp.json()
+        if resp.status_code != 200:
+            raise RuntimeError(f"CJ order list HTTP error {resp.status_code}: {resp.text}")
 
-    if data.get("code") != 200:
-        raise RuntimeError(f"CJ order list API error: {data.get('message', data)}")
+        data = resp.json()
 
-    block = data.get("data") or {}
-    return block.get("list") or []
+        if data.get("code") != 200:
+            raise RuntimeError(f"CJ order list API error: {data.get('message', data)}")
+
+        block = data.get("data") or {}
+        return block.get("list") or []
+
+    raise RuntimeError(f"CJ order list rate-limited repeatedly on page {page_num}")
 
 
+@st.cache_data(ttl=60 * 10, show_spinner=False)
 def get_cj_order_detail(token: str, order_id: str) -> dict:
     url = "https://developers.cjdropshipping.com/api2.0/v1/shopping/order/getOrderDetail"
     headers = {
@@ -902,23 +924,26 @@ def get_cj_order_detail(token: str, order_id: str) -> dict:
     }
     payload = {"orderId": order_id}
 
-    resp = requests.post(url, headers=headers, json=payload, timeout=60)
-
-    if resp.status_code == 429:
-        time.sleep(1.0)
+    for attempt in range(3):
         resp = requests.post(url, headers=headers, json=payload, timeout=60)
 
-    if resp.status_code != 200:
+        if resp.status_code == 429:
+            time.sleep(1.2 * (attempt + 1))
+            continue
+
+        if resp.status_code != 200:
+            return {}
+
+        data = resp.json()
+        detail = data.get("data")
+        if isinstance(detail, dict):
+            return detail
+
+        result = data.get("result")
+        if isinstance(result, dict):
+            return result
+
         return {}
-
-    data = resp.json()
-    detail = data.get("data")
-    if isinstance(detail, dict):
-        return detail
-
-    result = data.get("result")
-    if isinstance(result, dict):
-        return result
 
     return {}
 
@@ -955,7 +980,22 @@ def extract_cj_costs(list_row: dict, detail: dict) -> Tuple[float, float, float]
     return product_cost, shipping_cost, total_cost
 
 
-def fetch_cj_detail_parallel(token: str, rows_needing_detail: List[Tuple[str, dict]], max_workers: int = 6) -> Dict[str, dict]:
+def fetch_cj_order_pages_parallel(token: str, page_numbers: List[int], page_size: int = 50, max_workers: int = 4) -> Dict[int, List[dict]]:
+    results: Dict[int, List[dict]] = {}
+
+    def worker(page_num: int) -> Tuple[int, List[dict]]:
+        return page_num, get_cj_orders_page(token, page_num, page_size)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(worker, p) for p in page_numbers]
+        for fut in as_completed(futures):
+            page_num, rows = fut.result()
+            results[page_num] = rows
+
+    return results
+
+
+def fetch_cj_detail_parallel(token: str, rows_needing_detail: List[Tuple[str, dict]], max_workers: int = 10) -> Dict[str, dict]:
     results: Dict[str, dict] = {}
 
     def worker(order_number: str, row: dict) -> Tuple[str, dict]:
@@ -1001,7 +1041,14 @@ def cleanup_duplicate_cj_rows() -> None:
         conn.close()
 
 
-def sync_cj_costs_for_range(start_date: date, end_date: date, max_pages: int = 20) -> Tuple[int, int, int]:
+def estimate_cj_pages_to_scan(missing_count: int) -> int:
+    if missing_count <= 0:
+        return 0
+    base = max(40, int(math.ceil(missing_count / 12.0) * 8))
+    return min(max(base, 60), CJ_MAX_PAGES_HARD_LIMIT)
+
+
+def sync_cj_costs_for_range(start_date: date, end_date: date, max_pages: Optional[int] = None) -> Tuple[int, int, int]:
     target_order_names = get_shopify_order_names_in_range(start_date, end_date)
     target_count = len(target_order_names)
 
@@ -1020,29 +1067,47 @@ def sync_cj_costs_for_range(start_date: date, end_date: date, max_pages: int = 2
     missing_set: Set[str] = set(missing_order_names)
     found_rows: Dict[str, dict] = {}
 
+    dynamic_max_pages = estimate_cj_pages_to_scan(len(missing_set))
+    effective_max_pages = min(max_pages or dynamic_max_pages, CJ_MAX_PAGES_HARD_LIMIT)
+
     progress_text = st.empty()
     progress_bar = st.progress(0)
 
-    for page in range(1, max_pages + 1):
+    page = 1
+    batch_pages = 8
+
+    while page <= effective_max_pages and len(found_rows) < len(missing_set):
+        page_numbers = list(range(page, min(page + batch_pages, effective_max_pages + 1)))
         progress_text.info(
-            f"Loading missing CJ COGS... page {page}/{max_pages} | still missing {len(missing_set) - len(found_rows)}"
+            f"Loading missing CJ COGS... scanning pages {page_numbers[0]}-{page_numbers[-1]} / {effective_max_pages} | "
+            f"found {len(found_rows)} / {len(missing_set)}"
         )
 
-        rows = get_cj_orders_page(token, page_num=page, page_size=50)
-        if not rows:
+        page_map = fetch_cj_order_pages_parallel(
+            token,
+            page_numbers,
+            page_size=CJ_PAGE_SIZE,
+            max_workers=CJ_PAGE_FETCH_WORKERS
+        )
+
+        saw_any_rows = False
+        for p in sorted(page_numbers):
+            rows = page_map.get(p, [])
+            if rows:
+                saw_any_rows = True
+
+            for row in rows:
+                order_number = cj_extract_order_number(row)
+                if order_number and order_number in missing_set and order_number not in found_rows:
+                    found_rows[order_number] = row
+
+        progress_bar.progress(min(page_numbers[-1] / effective_max_pages, 1.0))
+
+        if not saw_any_rows:
             break
 
-        for row in rows:
-            order_number = cj_extract_order_number(row)
-            if order_number and order_number in missing_set and order_number not in found_rows:
-                found_rows[order_number] = row
-
-        progress_bar.progress(min(page / max_pages, 1.0))
-
-        if len(found_rows) >= len(missing_set):
-            break
-
-        time.sleep(0.05)
+        page += batch_pages
+        time.sleep(0.03)
 
     rows_needing_detail: List[Tuple[str, dict]] = []
     final_cost_rows: Dict[str, Tuple[dict, dict, float, float, float]] = {}
@@ -1055,8 +1120,8 @@ def sync_cj_costs_for_range(start_date: date, end_date: date, max_pages: int = 2
             rows_needing_detail.append((order_number, row))
 
     if rows_needing_detail:
-        progress_text.info(f"Loading CJ detail for {len(rows_needing_detail)} missing-cost order(s)...")
-        detail_map = fetch_cj_detail_parallel(token, rows_needing_detail, max_workers=6)
+        progress_text.info(f"Loading CJ detail for {len(rows_needing_detail)} order(s)...")
+        detail_map = fetch_cj_detail_parallel(token, rows_needing_detail, max_workers=CJ_DETAIL_FETCH_WORKERS)
 
         for order_number, row in rows_needing_detail:
             detail = detail_map.get(order_number, {})
@@ -1102,7 +1167,10 @@ def sync_cj_costs_for_range(start_date: date, end_date: date, max_pages: int = 2
 
     not_found_count = len(missing_set - set(found_rows.keys()))
     if not_found_count > 0:
-        st.warning(f"{not_found_count} selected order(s) still were not found in scanned CJ pages.")
+        st.warning(
+            f"{not_found_count} selected order(s) still were not found in scanned CJ pages. "
+            f"If this was a very large date range, run Force CJ Sync once more after Shopify data finishes loading."
+        )
 
     upsert_sync_state("cj", "ok", f"Synced {synced_count} CJ rows")
     return synced_count, already_cached_count, target_count
@@ -1272,7 +1340,7 @@ def build_cancel_rows(orders_df: pd.DataFrame) -> pd.DataFrame:
 
     for _, row in orders_df.iterrows():
         cancelled_at = row.get("cancelled_at")
-        if not cancelled_at:
+        if pd.isna(cancelled_at):
             continue
 
         cancel_dt = pd.to_datetime(cancelled_at, utc=True, errors="coerce")
@@ -1281,6 +1349,9 @@ def build_cancel_rows(orders_df: pd.DataFrame) -> pd.DataFrame:
 
         original_revenue = safe_float(row.get("original_total_price"))
         cogs = safe_float(row.get("cogs_base"))
+        fee_pct = safe_float(row.get("fee_pct"))
+        fee_fixed = safe_float(row.get("fee_fixed"))
+        original_fee = (original_revenue * fee_pct) + fee_fixed if original_revenue > 0 else 0.0
 
         cancel_rows.append(
             {
@@ -1293,7 +1364,7 @@ def build_cancel_rows(orders_df: pd.DataFrame) -> pd.DataFrame:
                 "revenue": -original_revenue,
                 "cogs": -cogs,
                 "gateway_key": row["gateway_key"],
-                "payment_fee": 0.0,
+                "payment_fee": -original_fee,
                 "cost_source": "cancel_adjustment",
                 "financial_status": row["financial_status"],
                 "allocated_ad_spend": 0.0,
@@ -1366,7 +1437,6 @@ def load_profit_df() -> pd.DataFrame:
     )
     orders["current_total_price"] = pd.to_numeric(orders.get("current_total_price"), errors="coerce").fillna(0.0)
     orders["total_refunded"] = pd.to_numeric(orders.get("total_refunded"), errors="coerce").fillna(0.0)
-
     orders["cogs_base"] = orders["total_cost"].combine_first(orders["total_cost_cj"]).fillna(0.0)
 
     orders["payment_gateways_json"] = orders["payment_gateways_json"].fillna("[]")
@@ -1375,10 +1445,8 @@ def load_profit_df() -> pd.DataFrame:
     fee_parts = orders["gateway_key"].apply(fee_rule_for_gateway)
     orders["fee_pct"] = fee_parts.apply(lambda x: x[0])
     orders["fee_fixed"] = fee_parts.apply(lambda x: x[1])
-
     orders["is_cancelled_int"] = orders["cancelled_at"].notna().astype(int)
 
-    # Sale rows: always keep original sale on original order day
     sale_rows = orders[
         [
             "order_id",
@@ -1443,7 +1511,6 @@ def load_profit_df() -> pd.DataFrame:
 
     df = pd.concat(all_rows, ignore_index=True)
 
-    # Meta spend should only be allocated across actual sale rows on sale day
     df = df.merge(meta, how="left", left_on="event_date", right_on="spend_date")
     df["spend"] = df["spend"].fillna(0.0)
 
@@ -1462,7 +1529,6 @@ def load_profit_df() -> pd.DataFrame:
 
     df["profit"] = df["revenue"] - df["cogs"] - df["allocated_ad_spend"] - df["payment_fee"]
     df["margin_pct"] = df["profit"] / df["revenue"].replace(0, math.nan) * 100
-
     df["order_date"] = df["event_date"]
 
     df = df.drop_duplicates(subset=["event_id"], keep="first")
@@ -1624,6 +1690,8 @@ def render_revenue_profit_chart(graph_df: pd.DataFrame, start_date: date, end_da
         zeroline=False,
         rangeslider=dict(visible=False),
         tickformat="%b %d",
+        minallowed=start_ts,
+        maxallowed=end_ts,
     )
 
     if span_days <= 14:
@@ -1632,9 +1700,10 @@ def render_revenue_profit_chart(graph_df: pd.DataFrame, start_date: date, end_da
         xaxis_cfg["ticktext"] = [d.strftime("%b %d") for d in full_dates]
 
     fig.update_layout(
-        height=335,
-        margin=dict(l=12, r=12, t=8, b=8),
+        height=300 if span_days <= 14 else 330,
+        margin=dict(l=10, r=10, t=8, b=8),
         hovermode="x unified",
+        dragmode="pan",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(255,255,255,0.01)",
         legend=dict(
@@ -1660,15 +1729,11 @@ def render_revenue_profit_chart(graph_df: pd.DataFrame, start_date: date, end_da
         fig,
         use_container_width=True,
         config={
-            "displayModeBar": True,
-            "scrollZoom": True,
+            "displayModeBar": False,
+            "scrollZoom": False,
             "displaylogo": False,
-            "modeBarButtonsToRemove": [
-                "select2d",
-                "lasso2d",
-                "autoScale2d",
-                "toggleSpikelines",
-            ],
+            "doubleClick": "reset",
+            "responsive": True,
         },
     )
 
@@ -1681,14 +1746,14 @@ st.markdown(
     <div class="top-grid-gap">
         <div class="dashboard-title">Live Profit Dashboard</div>
         <div class="dashboard-subtitle">
-            Shopify, Meta, and CJ stay synced automatically when stale. Missing CJ costs for the visible date range are loaded automatically too.
+            Shopify, Meta, and CJ stay synced automatically when stale. Missing CJ costs for the visible range load automatically too.
         </div>
     </div>
     """,
     unsafe_allow_html=True
 )
 
-top_a, top_b = st.columns([1.55, 0.95], vertical_alignment="center")
+top_a, top_b = st.columns([1.6, 0.9], vertical_alignment="center")
 
 with top_a:
     st.markdown("<div class='section-title'>Date Range</div>", unsafe_allow_html=True)
@@ -1741,39 +1806,28 @@ with top_b:
             except Exception as e:
                 st.error(f"Refresh failed: {e}")
 
-status_left, status_right = st.columns([1.3, 0.8], vertical_alignment="center")
+sync_states = get_last_sync_state()
+state_map = {r["source"]: r for _, r in sync_states.iterrows()} if not sync_states.empty else {}
+shopify_last = state_map.get("shopify", {}).get("last_sync_at", "—")
+meta_last = state_map.get("meta", {}).get("last_sync_at", "—")
+cj_last = state_map.get("cj", {}).get("last_sync_at", "—")
 
-with status_left:
-    st.markdown(
-        f"""
-        <div class="panel-tight">
-            <div class="mini-label">Selected Window</div>
-            <div class="range-big">{start_date} → {end_date}</div>
-            <div class="range-sub">All metrics, tables, chart, refunds, and cancellations reflect only this selected range.</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with status_right:
-    sync_states = get_last_sync_state()
-    if not sync_states.empty:
-        state_map = {r["source"]: r for _, r in sync_states.iterrows()}
-        shopify_last = state_map.get("shopify", {}).get("last_sync_at", "—")
-        meta_last = state_map.get("meta", {}).get("last_sync_at", "—")
-        cj_last = state_map.get("cj", {}).get("last_sync_at", "—")
-
-        st.markdown(
-            f"""
-            <div class="panel-tight">
-                <div class="mini-label">Last Sync</div>
-                <div class="sync-chip">Shopify: {shopify_last}</div>
-                <div class="sync-chip">Meta: {meta_last}</div>
-                <div class="sync-chip">CJ: {cj_last}</div>
+st.markdown(
+    f"""
+    <div class="status-bar">
+        <div class="status-grid">
+            <div>
+                <div class="status-title">{start_date} → {end_date}</div>
+                <div class="status-sub">Overview, chart, refunds, and cancellations reflect only this window.</div>
             </div>
-            """,
-            unsafe_allow_html=True
-        )
+            <div class="sync-chip">Shopify: {shopify_last}</div>
+            <div class="sync-chip">Meta: {meta_last}</div>
+            <div class="sync-chip">CJ: {cj_last}</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 with st.expander("Manual COGS override CSV / XLSX", expanded=False):
     st.markdown(
@@ -1844,7 +1898,7 @@ else:
     with m4:
         metric_card("ROAS", f"{roas:.2f}x", "Revenue / ad spend", theme="soft")
 
-    st.markdown("<div class='metric-row-spacer'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='metric-row-gap'></div>", unsafe_allow_html=True)
 
     m5, m6, m7, m8, m9 = st.columns(5)
     with m5:
@@ -1856,7 +1910,7 @@ else:
     with m8:
         metric_card("Refunds", f"${refunds_sum:,.2f}", "Booked on refund date", theme="soft")
     with m9:
-        metric_card("Canceled", f"${canceled_sum:,.2f}", "Revenue reversed on cancel date", theme="soft")
+        metric_card("Canceled", f"${canceled_sum:,.2f}", "Reversed on cancel date", theme="soft")
 
     st.markdown("<div class='section-title'>Revenue vs Profit</div>", unsafe_allow_html=True)
 
@@ -1867,7 +1921,6 @@ else:
 
     graph_df["order_date"] = pd.to_datetime(graph_df["order_date"])
     graph_df = graph_df.sort_values("order_date")
-
     graph_df = graph_df[
         (graph_df["order_date"].dt.date >= start_date) &
         (graph_df["order_date"].dt.date <= end_date)
