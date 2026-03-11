@@ -589,6 +589,9 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 currentTotalPriceSet {
                   shopMoney { amount currencyCode }
                 }
+                netPaymentSet {
+                  shopMoney { amount currencyCode }
+                }
                 totalRefundedSet {
                   shopMoney { amount currencyCode }
                 }
@@ -615,12 +618,18 @@ def sync_shopify_orders(days_back: int = 60) -> int:
 
                 total_price_set = (node.get("totalPriceSet") or {}).get("shopMoney") or {}
                 current_total_set = (node.get("currentTotalPriceSet") or {}).get("shopMoney") or {}
+                net_payment_set = (node.get("netPaymentSet") or {}).get("shopMoney") or {}
                 total_refunded_set = (node.get("totalRefundedSet") or {}).get("shopMoney") or {}
 
                 original_total_price = safe_float(total_price_set.get("amount"))
                 current_total_price = safe_float(current_total_set.get("amount"))
+                net_payment = safe_float(net_payment_set.get("amount"))
                 total_refunded = safe_float(total_refunded_set.get("amount"))
                 currency = total_price_set.get("currencyCode") or current_total_set.get("currencyCode") or "USD"
+
+                # Use net payment if available (reflects actual collected amount after edits),
+                # otherwise fall back to current total price
+                effective_revenue = net_payment if net_payment > 0 else current_total_price
 
                 refunds = []
                 refund_nodes = node.get("refunds") or []
@@ -649,7 +658,7 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                         node["id"],
                         node["name"],
                         node["createdAt"],
-                        current_total_price,
+                        effective_revenue,
                         currency,
                         node.get("displayFinancialStatus"),
                         "[]",
@@ -1802,7 +1811,7 @@ with top_b:
             try:
                 with st.spinner("Refreshing Shopify, Meta, and CJ..."):
                     run_sync_all(start_date, end_date, force=True)
-                st.success("Full refresh completed.")
+                st.rerun()
             except Exception as e:
                 st.error(f"Refresh failed: {e}")
 
