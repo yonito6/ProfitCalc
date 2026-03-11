@@ -595,6 +595,9 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 netPaymentSet {
                   shopMoney { amount currencyCode }
                 }
+                totalReceivedSet {
+                  shopMoney { amount currencyCode }
+                }
                 totalOutstandingSet {
                   shopMoney { amount currencyCode }
                 }
@@ -626,19 +629,25 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 total_price_set = (node.get("totalPriceSet") or {}).get("shopMoney") or {}
                 current_total_set = (node.get("currentTotalPriceSet") or {}).get("shopMoney") or {}
                 net_payment_set = (node.get("netPaymentSet") or {}).get("shopMoney") or {}
+                total_received_set = (node.get("totalReceivedSet") or {}).get("shopMoney") or {}
                 outstanding_set = (node.get("totalOutstandingSet") or {}).get("shopMoney") or {}
                 total_refunded_set = (node.get("totalRefundedSet") or {}).get("shopMoney") or {}
 
                 original_total_price = safe_float(original_total_set.get("amount")) or safe_float(total_price_set.get("amount"))
                 current_total_price = safe_float(current_total_set.get("amount"))
                 net_payment = safe_float(net_payment_set.get("amount"))
+                total_received = safe_float(total_received_set.get("amount"))
                 total_outstanding = safe_float(outstanding_set.get("amount"))
                 total_refunded = safe_float(total_refunded_set.get("amount"))
                 currency = total_price_set.get("currencyCode") or current_total_set.get("currencyCode") or "USD"
 
-                # currentTotalPriceSet is the order total after all edits (upsells added/removed)
-                # This is the most accurate "what the order is worth right now"
-                effective_revenue = current_total_price
+                # totalReceivedSet = all money actually received including separate upsell charges
+                # Subtract refunds to get the true current revenue
+                # Falls back to currentTotalPriceSet if no payments received yet
+                if total_received > 0:
+                    effective_revenue = total_received - total_refunded
+                else:
+                    effective_revenue = current_total_price
 
                 refunds = []
                 refund_nodes = node.get("refunds") or []
