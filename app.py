@@ -570,14 +570,14 @@ def sync_shopify_orders(days_back: int = 60) -> int:
     api_version = st.secrets.get("SHOPIFY_API_VERSION", "2026-01")
     headers = shopify_headers()
 
-    updated_after = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%dT00:00:00Z")
+    created_after = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%dT00:00:00Z")
 
     conn = get_conn()
     try:
         count = 0
         url = f"https://{store}/admin/api/{api_version}/orders.json"
         params = {
-            "updated_at_min": updated_after,
+            "created_at_min": created_after,
             "status": "any",
             "limit": 250,
         }
@@ -592,60 +592,28 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 order_name = order.get("name", "")
                 created_at = order.get("created_at", "")
                 processed_at = order.get("processed_at", "")
-                cancelled_at = order.get("cancelled_at")
                 is_test = 1 if order.get("test", False) else 0
                 financial_status = (order.get("financial_status") or "").upper()
                 payment_gateways = order.get("payment_gateway_names") or []
                 currency = order.get("currency", "USD")
-
-                original_total_price = safe_float(order.get("total_price"))
                 current_total_price = safe_float(order.get("current_total_price"))
 
-                total_refunded = 0.0
-                refunds = []
-                for refund in (order.get("refunds") or []):
-                    refund_amount = 0.0
-                    for txn in (refund.get("transactions") or []):
-                        if txn.get("kind") == "refund" and txn.get("status") == "success":
-                            refund_amount += safe_float(txn.get("amount"))
-                    total_refunded += refund_amount
-                    refunds.append({
-                        "id": str(refund.get("id", "")),
-                        "createdAt": refund.get("created_at"),
-                        "processedAt": refund.get("processed_at"),
-                        "amount": refund_amount,
-                        "currencyCode": currency,
-                    })
-
-                # current_total_price from REST API is the source of truth.
-                # It reflects all order edits, upsells, refunds, and removals.
+                # current_total_price is the source of truth from Shopify REST API
                 effective_revenue = current_total_price
 
-                # Check if order already exists in DB
-                existing = conn.execute(
-                    "SELECT order_id FROM shopify_orders WHERE order_id = ?", (order_id,)
-                ).fetchone()
-
-                if existing:
-                    # UPDATE existing order with latest revenue from Shopify
-                    conn.execute(
-                        """
-                        UPDATE shopify_orders
-                        SET revenue = ?, financial_status = ?, currency = ?
-                        WHERE order_id = ?
-                        """,
-                        (effective_revenue, financial_status, currency, order_id),
-                    )
-                else:
-                    # INSERT new order with base columns only (guaranteed to exist)
-                    conn.execute(
-                        """
-                        INSERT INTO shopify_orders
-                        (order_id, order_name, created_at, revenue, currency, financial_status, line_items_json)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (order_id, order_name, created_at, effective_revenue, currency, financial_status, "[]"),
-                    )
+                # UPSERT: insert new order or update revenue if it already exists
+                conn.execute(
+                    """
+                    INSERT INTO shopify_orders
+                    (order_id, order_name, created_at, revenue, currency, financial_status, line_items_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(order_id) DO UPDATE SET
+                        revenue = excluded.revenue,
+                        financial_status = excluded.financial_status,
+                        currency = excluded.currency
+                    """,
+                    (order_id, order_name, created_at, effective_revenue, currency, financial_status, "[]"),
+                )
 
                 conn.execute(
                     """
