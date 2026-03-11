@@ -700,8 +700,9 @@ def sync_meta_spend(days_back: int = 60) -> int:
     account_id = st.secrets["META_AD_ACCOUNT_ID"]
     token = st.secrets["META_ACCESS_TOKEN"]
 
-    since = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-    until = datetime.utcnow().strftime("%Y-%m-%d")
+    now_israel = datetime.now(tz=pd.Timestamp.now(tz=STORE_TIMEZONE).tzinfo)
+    since = (now_israel - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    until = now_israel.strftime("%Y-%m-%d")
 
     url = f"https://graph.facebook.com/v25.0/{account_id}/insights"
     params = {
@@ -710,6 +711,7 @@ def sync_meta_spend(days_back: int = 60) -> int:
         "time_increment": 1,
         "fields": "date_start,spend",
         "limit": 100,
+        "time_zone": STORE_TIMEZONE,
     }
 
     conn = get_conn()
