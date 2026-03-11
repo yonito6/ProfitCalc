@@ -567,7 +567,7 @@ def sync_shopify_orders(days_back: int = 60) -> int:
         cursor = None
 
         created_after = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-        query_str = f"created_at:>={created_after}"
+        query_str = f"created_at:>={created_after} OR updated_at:>={created_after}"
 
         query = """
         query GetOrders($first: Int!, $after: String, $query: String!) {
@@ -649,7 +649,7 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                         node["id"],
                         node["name"],
                         node["createdAt"],
-                        original_total_price,
+                        current_total_price,
                         currency,
                         node.get("displayFinancialStatus"),
                         "[]",
