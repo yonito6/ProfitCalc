@@ -636,11 +636,9 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 total_refunded = safe_float(total_refunded_set.get("amount"))
                 currency = total_price_set.get("currencyCode") or current_total_set.get("currencyCode") or "USD"
 
-                # Best revenue = net payment + outstanding (what was paid + what is still owed)
-                # This correctly handles: edited orders, removed upsells, partial payments
-                # Falls back to currentTotalPriceSet if both are zero
-                computed_revenue = net_payment + total_outstanding
-                effective_revenue = computed_revenue if computed_revenue > 0 else current_total_price
+                # currentTotalPriceSet is the order total after all edits (upsells added/removed)
+                # This is the most accurate "what the order is worth right now"
+                effective_revenue = current_total_price
 
                 refunds = []
                 refund_nodes = node.get("refunds") or []
