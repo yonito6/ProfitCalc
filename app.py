@@ -561,86 +561,65 @@ def shopify_graphql(query: str, variables: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def sync_shopify_orders(days_back: int = 60) -> int:
+    """Sync orders using Shopify REST Admin API.
+
+    Uses current_total_price from REST which reliably reflects all order
+    edits including accepted/removed upsells.
+    """
+    store = st.secrets["SHOPIFY_STORE"]
+    api_version = st.secrets.get("SHOPIFY_API_VERSION", "2026-01")
+    headers = shopify_headers()
+
+    updated_after = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%dT00:00:00Z")
+
     conn = get_conn()
     try:
         count = 0
-        cursor = None
-
-        created_after = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-        query_str = f"created_at:>={created_after}"
-
-        query = """
-        query GetOrders($first: Int!, $after: String, $query: String!) {
-          orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
-            pageInfo { hasNextPage endCursor }
-            edges {
-              node {
-                id
-                name
-                createdAt
-                processedAt
-                cancelledAt
-                test
-                displayFinancialStatus
-                paymentGatewayNames
-                totalPriceSet {
-                  shopMoney { amount currencyCode }
-                }
-                currentTotalPriceSet {
-                  shopMoney { amount currencyCode }
-                }
-                totalRefundedSet {
-                  shopMoney { amount currencyCode }
-                }
-                refunds(first: 50) {
-                  id
-                  createdAt
-                  processedAt
-                  totalRefundedSet {
-                    shopMoney { amount currencyCode }
-                  }
-                }
-              }
-            }
-          }
+        url = f"https://{store}/admin/api/{api_version}/orders.json"
+        params = {
+            "updated_at_min": updated_after,
+            "status": "any",
+            "limit": 250,
         }
-        """
 
         while True:
-            data = shopify_graphql(query, {"first": 100, "after": cursor, "query": query_str})
-            orders = data["orders"]["edges"]
+            resp = requests.get(url, headers=headers, params=params, timeout=60)
+            resp.raise_for_status()
+            data = resp.json()
 
-            for edge in orders:
-                node = edge["node"]
+            for order in data.get("orders", []):
+                order_id = f"gid://shopify/Order/{order['id']}"
+                order_name = order.get("name", "")
+                created_at = order.get("created_at", "")
+                processed_at = order.get("processed_at", "")
+                cancelled_at = order.get("cancelled_at")
+                is_test = 1 if order.get("test", False) else 0
+                financial_status = (order.get("financial_status") or "").upper()
+                payment_gateways = order.get("payment_gateway_names") or []
+                currency = order.get("currency", "USD")
 
-                total_price_set = (node.get("totalPriceSet") or {}).get("shopMoney") or {}
-                current_total_set = (node.get("currentTotalPriceSet") or {}).get("shopMoney") or {}
-                total_refunded_set = (node.get("totalRefundedSet") or {}).get("shopMoney") or {}
+                original_total_price = safe_float(order.get("total_price"))
+                current_total_price = safe_float(order.get("current_total_price"))
 
-                original_total_price = safe_float(total_price_set.get("amount"))
-                current_total_price = safe_float(current_total_set.get("amount"))
-                total_refunded = safe_float(total_refunded_set.get("amount"))
-                currency = total_price_set.get("currencyCode") or current_total_set.get("currencyCode") or "USD"
-
-                # Use the highest of currentTotalPrice or (totalPrice - refunds)
-                # currentTotalPriceSet = total after edits and refunds
-                # totalPriceSet = total after edits but before refunds
-                # We take the max to handle cases where upsell apps update one but not the other
-                effective_revenue = max(current_total_price, original_total_price - total_refunded)
-
+                total_refunded = 0.0
                 refunds = []
-                refund_nodes = node.get("refunds") or []
-                for refund in refund_nodes:
-                    refund_money = ((refund.get("totalRefundedSet") or {}).get("shopMoney") or {})
-                    refunds.append(
-                        {
-                            "id": refund.get("id"),
-                            "createdAt": refund.get("createdAt"),
-                            "processedAt": refund.get("processedAt"),
-                            "amount": safe_float(refund_money.get("amount")),
-                            "currencyCode": refund_money.get("currencyCode") or currency,
-                        }
-                    )
+                for refund in (order.get("refunds") or []):
+                    refund_amount = 0.0
+                    for txn in (refund.get("transactions") or []):
+                        if txn.get("kind") == "refund" and txn.get("status") == "success":
+                            refund_amount += safe_float(txn.get("amount"))
+                    total_refunded += refund_amount
+                    refunds.append({
+                        "id": str(refund.get("id", "")),
+                        "createdAt": refund.get("created_at"),
+                        "processedAt": refund.get("processed_at"),
+                        "amount": refund_amount,
+                        "currencyCode": currency,
+                    })
+
+                # current_total_price from REST API is the source of truth.
+                # It reflects all order edits, upsells, refunds, and removals.
+                effective_revenue = current_total_price
 
                 conn.execute(
                     """
@@ -652,17 +631,17 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        node["id"],
-                        node["name"],
-                        node["createdAt"],
+                        order_id,
+                        order_name,
+                        created_at,
                         effective_revenue,
                         currency,
-                        node.get("displayFinancialStatus"),
+                        financial_status,
                         "[]",
                         original_total_price,
                         current_total_price,
                         total_refunded,
-                        node.get("cancelledAt"),
+                        cancelled_at,
                         json.dumps(refunds),
                     ),
                 )
@@ -674,10 +653,10 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                     VALUES (?, ?, ?, ?)
                     """,
                     (
-                        node["id"],
-                        node.get("processedAt"),
-                        json.dumps(node.get("paymentGatewayNames") or []),
-                        1 if node.get("test") else 0,
+                        order_id,
+                        processed_at,
+                        json.dumps(payment_gateways),
+                        is_test,
                     ),
                 )
 
@@ -685,10 +664,18 @@ def sync_shopify_orders(days_back: int = 60) -> int:
 
             conn.commit()
 
-            page_info = data["orders"]["pageInfo"]
-            if not page_info["hasNextPage"]:
+            # Shopify REST pagination via Link header
+            link_header = resp.headers.get("Link", "")
+            next_url = None
+            for part in link_header.split(","):
+                if 'rel="next"' in part:
+                    next_url = part.split(";")[0].strip().strip("<>")
+                    break
+
+            if not next_url:
                 break
-            cursor = page_info["endCursor"]
+            url = next_url
+            params = None
 
         upsert_sync_state("shopify", "ok", f"Synced {count} orders")
         return count
