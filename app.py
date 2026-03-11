@@ -583,6 +583,9 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 test
                 displayFinancialStatus
                 paymentGatewayNames
+                originalTotalPriceSet {
+                  shopMoney { amount currencyCode }
+                }
                 totalPriceSet {
                   shopMoney { amount currencyCode }
                 }
@@ -590,6 +593,9 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                   shopMoney { amount currencyCode }
                 }
                 netPaymentSet {
+                  shopMoney { amount currencyCode }
+                }
+                totalOutstandingSet {
                   shopMoney { amount currencyCode }
                 }
                 totalRefundedSet {
@@ -616,20 +622,25 @@ def sync_shopify_orders(days_back: int = 60) -> int:
             for edge in orders:
                 node = edge["node"]
 
+                original_total_set = (node.get("originalTotalPriceSet") or {}).get("shopMoney") or {}
                 total_price_set = (node.get("totalPriceSet") or {}).get("shopMoney") or {}
                 current_total_set = (node.get("currentTotalPriceSet") or {}).get("shopMoney") or {}
                 net_payment_set = (node.get("netPaymentSet") or {}).get("shopMoney") or {}
+                outstanding_set = (node.get("totalOutstandingSet") or {}).get("shopMoney") or {}
                 total_refunded_set = (node.get("totalRefundedSet") or {}).get("shopMoney") or {}
 
-                original_total_price = safe_float(total_price_set.get("amount"))
+                original_total_price = safe_float(original_total_set.get("amount")) or safe_float(total_price_set.get("amount"))
                 current_total_price = safe_float(current_total_set.get("amount"))
                 net_payment = safe_float(net_payment_set.get("amount"))
+                total_outstanding = safe_float(outstanding_set.get("amount"))
                 total_refunded = safe_float(total_refunded_set.get("amount"))
                 currency = total_price_set.get("currencyCode") or current_total_set.get("currencyCode") or "USD"
 
-                # Use net payment if available (reflects actual collected amount after edits),
-                # otherwise fall back to current total price
-                effective_revenue = net_payment if net_payment > 0 else current_total_price
+                # Best revenue = net payment + outstanding (what was paid + what is still owed)
+                # This correctly handles: edited orders, removed upsells, partial payments
+                # Falls back to currentTotalPriceSet if both are zero
+                computed_revenue = net_payment + total_outstanding
+                effective_revenue = computed_revenue if computed_revenue > 0 else current_total_price
 
                 refunds = []
                 refund_nodes = node.get("refunds") or []
@@ -1603,23 +1614,35 @@ def run_sync_all(start_date: date, end_date: date, force: bool = False) -> Dict[
         "did_anything": False,
     }
 
+    errors = []
+
     if force or should_sync("shopify", SHOPIFY_AUTO_SYNC_MINUTES):
-        n = sync_shopify_orders(days_back)
-        result["shopify_orders"] = n
-        result["did_anything"] = True
+        try:
+            n = sync_shopify_orders(days_back)
+            result["shopify_orders"] = n
+            result["did_anything"] = True
+        except Exception as e:
+            errors.append(f"Shopify: {e}")
 
     if force or should_sync("meta", META_AUTO_SYNC_MINUTES):
-        n = sync_meta_spend(days_back)
-        result["meta_rows"] = n
-        result["did_anything"] = True
+        try:
+            n = sync_meta_spend(days_back)
+            result["meta_rows"] = n
+            result["did_anything"] = True
+        except Exception as e:
+            errors.append(f"Meta: {e}")
 
     if force or should_sync("cj", CJ_AUTO_SYNC_MINUTES):
-        synced_count, already_cached_count, target_count = sync_cj_costs_for_range(start_date, end_date)
-        result["cj_rows"] = synced_count
-        result["cj_cached_or_manual"] = already_cached_count
-        result["cj_targets"] = target_count
-        result["did_anything"] = True
+        try:
+            synced_count, already_cached_count, target_count = sync_cj_costs_for_range(start_date, end_date)
+            result["cj_rows"] = synced_count
+            result["cj_cached_or_manual"] = already_cached_count
+            result["cj_targets"] = target_count
+            result["did_anything"] = True
+        except Exception as e:
+            errors.append(f"CJ: {e}")
 
+    result["errors"] = errors
     return result
 
 
@@ -1808,12 +1831,12 @@ with top_b:
 
     with ctrl2:
         if st.button("Refresh all now", use_container_width=True):
-            try:
-                with st.spinner("Refreshing Shopify, Meta, and CJ..."):
-                    run_sync_all(start_date, end_date, force=True)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Refresh failed: {e}")
+            with st.spinner("Refreshing Shopify, Meta, and CJ..."):
+                sync_result = run_sync_all(start_date, end_date, force=True)
+            if sync_result.get("errors"):
+                for err in sync_result["errors"]:
+                    st.warning(err)
+            st.rerun()
 
 sync_states = get_last_sync_state()
 state_map = {r["source"]: r for _, r in sync_states.iterrows()} if not sync_states.empty else {}
