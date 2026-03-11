@@ -567,11 +567,11 @@ def sync_shopify_orders(days_back: int = 60) -> int:
         cursor = None
 
         created_after = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-        query_str = f"updated_at:>={created_after}"
+        query_str = f"created_at:>={created_after}"
 
         query = """
         query GetOrders($first: Int!, $after: String, $query: String!) {
-          orders(first: $first, after: $after, query: $query, sortKey: UPDATED_AT, reverse: true) {
+          orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
             pageInfo { hasNextPage endCursor }
             edges {
               node {
@@ -581,37 +581,16 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 processedAt
                 cancelledAt
                 test
-                taxesIncluded
                 displayFinancialStatus
                 paymentGatewayNames
-                originalTotalPriceSet {
+                totalPriceSet {
                   shopMoney { amount currencyCode }
                 }
                 currentTotalPriceSet {
                   shopMoney { amount currencyCode }
                 }
-                totalShippingPriceSet {
-                  shopMoney { amount }
-                }
-                totalTaxSet {
-                  shopMoney { amount }
-                }
                 totalRefundedSet {
                   shopMoney { amount currencyCode }
-                }
-                lineItems(first: 100) {
-                  edges {
-                    node {
-                      quantity
-                      currentQuantity
-                      originalUnitPriceSet {
-                        shopMoney { amount }
-                      }
-                      totalDiscountSet {
-                        shopMoney { amount }
-                      }
-                    }
-                  }
                 }
                 refunds(first: 50) {
                   id
@@ -634,40 +613,20 @@ def sync_shopify_orders(days_back: int = 60) -> int:
             for edge in orders:
                 node = edge["node"]
 
-                original_total_set = (node.get("originalTotalPriceSet") or {}).get("shopMoney") or {}
+                total_price_set = (node.get("totalPriceSet") or {}).get("shopMoney") or {}
                 current_total_set = (node.get("currentTotalPriceSet") or {}).get("shopMoney") or {}
                 total_refunded_set = (node.get("totalRefundedSet") or {}).get("shopMoney") or {}
 
-                original_total_price = safe_float(original_total_set.get("amount"))
+                original_total_price = safe_float(total_price_set.get("amount"))
                 current_total_price = safe_float(current_total_set.get("amount"))
                 total_refunded = safe_float(total_refunded_set.get("amount"))
-                currency = current_total_set.get("currencyCode") or "USD"
+                currency = total_price_set.get("currencyCode") or current_total_set.get("currencyCode") or "USD"
 
-                # Compute revenue from line items — this is the most reliable source
-                # because upsell apps add products as line items but API total fields
-                # may not update to reflect the added items
-                line_items_subtotal = 0.0
-                for item_edge in (node.get("lineItems", {}).get("edges") or []):
-                    item = item_edge["node"]
-                    unit_price = safe_float(((item.get("originalUnitPriceSet") or {}).get("shopMoney") or {}).get("amount"))
-                    total_discount = safe_float(((item.get("totalDiscountSet") or {}).get("shopMoney") or {}).get("amount"))
-                    cur_qty = item.get("currentQuantity", 0)
-                    orig_qty = item.get("quantity", 0)
-                    item_total = unit_price * cur_qty
-                    item_discount = total_discount * (cur_qty / orig_qty) if orig_qty > 0 else 0.0
-                    line_items_subtotal += item_total - item_discount
-
-                shipping = safe_float(((node.get("totalShippingPriceSet") or {}).get("shopMoney") or {}).get("amount"))
-                tax = safe_float(((node.get("totalTaxSet") or {}).get("shopMoney") or {}).get("amount"))
-                taxes_included = node.get("taxesIncluded", False)
-
-                if line_items_subtotal > 0:
-                    if taxes_included:
-                        effective_revenue = line_items_subtotal + shipping - total_refunded
-                    else:
-                        effective_revenue = line_items_subtotal + shipping + tax - total_refunded
-                else:
-                    effective_revenue = current_total_price
+                # Use the highest of currentTotalPrice or (totalPrice - refunds)
+                # currentTotalPriceSet = total after edits and refunds
+                # totalPriceSet = total after edits but before refunds
+                # We take the max to handle cases where upsell apps update one but not the other
+                effective_revenue = max(current_total_price, original_total_price - total_refunded)
 
                 refunds = []
                 refund_nodes = node.get("refunds") or []
@@ -1861,9 +1820,14 @@ with top_b:
             with st.spinner("Refreshing Shopify, Meta, and CJ..."):
                 sync_result = run_sync_all(start_date, end_date, force=True)
             if sync_result.get("errors"):
-                for err in sync_result["errors"]:
-                    st.warning(err)
+                st.session_state["sync_errors"] = sync_result["errors"]
+            else:
+                st.session_state.pop("sync_errors", None)
             st.rerun()
+
+    if st.session_state.get("sync_errors"):
+        for err in st.session_state.pop("sync_errors"):
+            st.warning(err)
 
 sync_states = get_last_sync_state()
 state_map = {r["source"]: r for _, r in sync_states.iterrows()} if not sync_states.empty else {}
