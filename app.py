@@ -52,7 +52,10 @@ st.markdown(
     """
     <style>
     .main {
-        background: #000000;
+        background:
+            radial-gradient(circle at top left, rgba(40,54,95,0.22), transparent 28%),
+            radial-gradient(circle at top right, rgba(29,91,57,0.18), transparent 22%),
+            linear-gradient(180deg, #0b0d12 0%, #10131a 100%);
     }
 
     .block-container {
@@ -97,11 +100,11 @@ st.markdown(
     }
 
     .status-bar {
-        background: #000000;
-        border: 1px solid rgba(255,255,255,0.10);
+        background: linear-gradient(180deg, rgba(19,23,32,0.96) 0%, rgba(14,18,25,0.96) 100%);
+        border: 1px solid rgba(255,255,255,0.08);
         border-radius: 16px;
         padding: 9px 11px;
-        box-shadow: none;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.16);
         margin-bottom: 0.35rem;
     }
 
@@ -129,8 +132,8 @@ st.markdown(
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        background: #000000;
-        border: 1px solid rgba(255,255,255,0.10);
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
         border-radius: 999px;
         padding: 4px 8px;
         color: #c8d0dc;
@@ -140,28 +143,28 @@ st.markdown(
     }
 
     .metric-card {
-        background: #000000;
-        border: 1px solid rgba(255,255,255,0.10);
+        background: linear-gradient(180deg, #171c26 0%, #121722 100%);
+        border: 1px solid rgba(255,255,255,0.085);
         border-radius: 18px;
         padding: 15px 15px 12px 15px;
-        box-shadow: none;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.18);
         min-height: 102px;
         margin-bottom: 0.08rem;
     }
 
     .metric-card.profit {
-        background: #000000;
+        background: linear-gradient(180deg, #173326 0%, #11271d 100%);
         border: 1px solid rgba(73,196,125,0.34);
-        box-shadow: none;
+        box-shadow: 0 10px 32px rgba(19,88,50,0.28);
     }
 
     .metric-card.revenue {
-        background: #000000;
+        background: linear-gradient(180deg, #1c2434 0%, #131a26 100%);
         border: 1px solid rgba(102,143,255,0.18);
     }
 
     .metric-card.soft {
-        background: #000000;
+        background: linear-gradient(180deg, #191d27 0%, #11151d 100%);
     }
 
     .metric-label {
