@@ -567,11 +567,11 @@ def sync_shopify_orders(days_back: int = 60) -> int:
         cursor = None
 
         created_after = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-        query_str = f"created_at:>={created_after} OR updated_at:>={created_after}"
+        query_str = f"updated_at:>={created_after}"
 
         query = """
         query GetOrders($first: Int!, $after: String, $query: String!) {
-          orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
+          orders(first: $first, after: $after, query: $query, sortKey: UPDATED_AT, reverse: true) {
             pageInfo { hasNextPage endCursor }
             edges {
               node {
