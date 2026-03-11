@@ -621,48 +621,31 @@ def sync_shopify_orders(days_back: int = 60) -> int:
                 # It reflects all order edits, upsells, refunds, and removals.
                 effective_revenue = current_total_price
 
-                # Try full INSERT OR REPLACE first (includes extra columns)
-                try:
+                # Check if order already exists in DB
+                existing = conn.execute(
+                    "SELECT order_id FROM shopify_orders WHERE order_id = ?", (order_id,)
+                ).fetchone()
+
+                if existing:
+                    # UPDATE existing order with latest revenue from Shopify
                     conn.execute(
                         """
-                        INSERT OR REPLACE INTO shopify_orders
-                        (
-                            order_id, order_name, created_at, revenue, currency, financial_status, line_items_json,
-                            original_total_price, current_total_price, total_refunded, cancelled_at, refunds_json
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        UPDATE shopify_orders
+                        SET revenue = ?, financial_status = ?, currency = ?
+                        WHERE order_id = ?
                         """,
-                        (
-                            order_id,
-                            order_name,
-                            created_at,
-                            effective_revenue,
-                            currency,
-                            financial_status,
-                            "[]",
-                            original_total_price,
-                            current_total_price,
-                            total_refunded,
-                            cancelled_at,
-                            json.dumps(refunds),
-                        ),
+                        (effective_revenue, financial_status, currency, order_id),
                     )
-                except Exception:
-                    # Fallback: INSERT with base columns only, or UPDATE revenue if exists
+                else:
+                    # INSERT new order with base columns only (guaranteed to exist)
                     conn.execute(
                         """
-                        INSERT OR IGNORE INTO shopify_orders
+                        INSERT INTO shopify_orders
                         (order_id, order_name, created_at, revenue, currency, financial_status, line_items_json)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
                         (order_id, order_name, created_at, effective_revenue, currency, financial_status, "[]"),
                     )
-
-                # Always UPDATE revenue to latest value regardless of INSERT outcome
-                conn.execute(
-                    "UPDATE shopify_orders SET revenue = ?, financial_status = ? WHERE order_id = ?",
-                    (effective_revenue, financial_status, order_id),
-                )
 
                 conn.execute(
                     """
